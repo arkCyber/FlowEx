@@ -1,0 +1,738 @@
+openapi: 3.0.3
+info:
+  title: FlowEx Trading Platform API
+  description: |
+    # FlowEx Enterprise Trading Platform API
+    
+    Welcome to the FlowEx API documentation. This comprehensive API provides access to all trading, 
+    market data, wallet, and account management functionality of the FlowEx platform.
+    
+    ## Features
+    - **Real-time Trading**: Execute trades with sub-second latency
+    - **Market Data**: Access to real-time and historical market data
+    - **Wallet Management**: Secure wallet operations and transaction history
+    - **Advanced Orders**: Support for limit, market, stop-loss, and take-profit orders
+    - **WebSocket Streams**: Real-time data feeds for market data and account updates
+    
+    ## Authentication
+    All API endpoints require authentication using JWT tokens. Obtain a token by calling the `/auth/login` endpoint.
+    
+    ## Rate Limiting
+    - **Public endpoints**: 1000 requests per minute
+    - **Private endpoints**: 6000 requests per minute
+    - **Trading endpoints**: 10 orders per second
+    
+    ## Error Handling
+    The API uses standard HTTP status codes and returns detailed error messages in JSON format.
+    
+    Created by arkSong (arksong2018@gmail.com) - FlowEx Founder
+  version: 1.0.0
+  contact:
+    name: FlowEx Support
+    email: arksong2018@gmail.com
+    url: https://flowex.com/support
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: https://flowex.com/terms
+
+servers:
+  - url: https://api.flowex.com/v1
+    description: Production server
+  - url: https://staging-api.flowex.com/v1
+    description: Staging server
+  - url: http://localhost:8000
+    description: Development server
+
+security:
+  - BearerAuth: []
+
+paths:
+  # Authentication Endpoints
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register new user
+      description: Create a new user account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              email: "user@example.com"
+              password: "SecurePassword123!"
+              first_name: "John"
+              last_name: "Doe"
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+              example:
+                success: true
+                data:
+                  id: "123e4567-e89b-12d3-a456-426614174000"
+                  email: "user@example.com"
+                  first_name: "John"
+                  last_name: "Doe"
+                  is_verified: false
+                  created_at: "2024-01-01T00:00:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: User login
+      description: Authenticate user and return JWT token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: "user@example.com"
+              password: "SecurePassword123!"
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              example:
+                success: true
+                data:
+                  token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  user:
+                    id: "123e4567-e89b-12d3-a456-426614174000"
+                    email: "user@example.com"
+                    first_name: "John"
+                    last_name: "Doe"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # Trading Endpoints
+  /trading/pairs:
+    get:
+      tags: [Trading]
+      summary: Get trading pairs
+      description: Retrieve all available trading pairs
+      responses:
+        '200':
+          description: Trading pairs retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TradingPair'
+              example:
+                success: true
+                data:
+                  - symbol: "BTCUSDT"
+                    base_asset: "BTC"
+                    quote_asset: "USDT"
+                    status: "TRADING"
+                    min_price: "0.00000001"
+                    max_price: "999999999.99999999"
+
+  /trading/orders:
+    get:
+      tags: [Trading]
+      summary: Get user orders
+      description: Retrieve all orders for the authenticated user
+      parameters:
+        - name: status
+          in: query
+          description: Filter by order status
+          schema:
+            type: string
+            enum: [new, partially_filled, filled, cancelled, rejected, expired]
+        - name: symbol
+          in: query
+          description: Filter by trading pair
+          schema:
+            type: string
+            example: "BTCUSDT"
+        - name: limit
+          in: query
+          description: Number of orders to return (max 1000)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        '200':
+          description: Orders retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+
+    post:
+      tags: [Trading]
+      summary: Create new order
+      description: Place a new trading order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+            example:
+              trading_pair: "BTCUSDT"
+              side: "buy"
+              order_type: "limit"
+              quantity: "0.001"
+              price: "45000.00"
+      responses:
+        '201':
+          description: Order created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimit'
+
+  # Market Data Endpoints
+  /market-data/tickers:
+    get:
+      tags: [Market Data]
+      summary: Get all tickers
+      description: Retrieve ticker data for all trading pairs
+      security: []
+      responses:
+        '200':
+          description: Tickers retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Ticker'
+
+  /market-data/ticker/{symbol}:
+    get:
+      tags: [Market Data]
+      summary: Get ticker for symbol
+      description: Retrieve ticker data for a specific trading pair
+      security: []
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          description: Trading pair symbol
+          schema:
+            type: string
+            example: "BTCUSDT"
+      responses:
+        '200':
+          description: Ticker retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Ticker'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Wallet Endpoints
+  /wallet/balances:
+    get:
+      tags: [Wallet]
+      summary: Get user balances
+      description: Retrieve all balances for the authenticated user
+      responses:
+        '200':
+          description: Balances retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Balance'
+
+  /wallet/balance/{currency}:
+    get:
+      tags: [Wallet]
+      summary: Get balance for currency
+      description: Retrieve balance for a specific currency
+      parameters:
+        - name: currency
+          in: path
+          required: true
+          description: Currency code
+          schema:
+            type: string
+            example: "BTC"
+      responses:
+        '200':
+          description: Balance retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Balance'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /wallet/transactions:
+    get:
+      tags: [Wallet]
+      summary: Get transaction history
+      description: Retrieve transaction history for the authenticated user
+      parameters:
+        - name: type
+          in: query
+          description: Filter by transaction type
+          schema:
+            type: string
+            enum: [deposit, withdrawal, trade, fee]
+        - name: currency
+          in: query
+          description: Filter by currency
+          schema:
+            type: string
+            example: "BTC"
+        - name: limit
+          in: query
+          description: Number of transactions to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        '200':
+          description: Transactions retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # Request/Response Models
+    RegisterRequest:
+      type: object
+      required: [email, password, first_name, last_name]
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          minLength: 8
+          example: "SecurePassword123!"
+        first_name:
+          type: string
+          example: "John"
+        last_name:
+          type: string
+          example: "Doe"
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          example: "SecurePassword123!"
+
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            token:
+              type: string
+              example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            user:
+              $ref: '#/components/schemas/User'
+
+    CreateOrderRequest:
+      type: object
+      required: [trading_pair, side, order_type, quantity]
+      properties:
+        trading_pair:
+          type: string
+          example: "BTCUSDT"
+        side:
+          type: string
+          enum: [buy, sell]
+          example: "buy"
+        order_type:
+          type: string
+          enum: [market, limit, stop_loss, take_profit]
+          example: "limit"
+        quantity:
+          type: string
+          pattern: '^[0-9]+\.?[0-9]*$'
+          example: "0.001"
+        price:
+          type: string
+          pattern: '^[0-9]+\.?[0-9]*$'
+          example: "45000.00"
+          description: "Required for limit orders"
+
+    # Data Models
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        first_name:
+          type: string
+          example: "John"
+        last_name:
+          type: string
+          example: "Doe"
+        is_verified:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    TradingPair:
+      type: object
+      properties:
+        symbol:
+          type: string
+          example: "BTCUSDT"
+        base_asset:
+          type: string
+          example: "BTC"
+        quote_asset:
+          type: string
+          example: "USDT"
+        status:
+          type: string
+          example: "TRADING"
+        min_price:
+          type: string
+          example: "0.00000001"
+        max_price:
+          type: string
+          example: "999999999.99999999"
+        min_qty:
+          type: string
+          example: "0.00000001"
+        max_qty:
+          type: string
+          example: "999999999.99999999"
+        step_size:
+          type: string
+          example: "0.00000001"
+        tick_size:
+          type: string
+          example: "0.00000001"
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        user_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        trading_pair:
+          type: string
+          example: "BTCUSDT"
+        side:
+          type: string
+          enum: [buy, sell]
+          example: "buy"
+        order_type:
+          type: string
+          enum: [market, limit, stop_loss, take_profit]
+          example: "limit"
+        price:
+          type: string
+          nullable: true
+          example: "45000.00"
+        quantity:
+          type: string
+          example: "0.001"
+        filled_quantity:
+          type: string
+          example: "0.0005"
+        remaining_quantity:
+          type: string
+          example: "0.0005"
+        status:
+          type: string
+          enum: [new, partially_filled, filled, cancelled, rejected, expired]
+          example: "partially_filled"
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    Ticker:
+      type: object
+      properties:
+        symbol:
+          type: string
+          example: "BTCUSDT"
+        price:
+          type: string
+          example: "45000.00"
+        change:
+          type: string
+          example: "1250.00"
+        change_percent:
+          type: string
+          example: "2.86"
+        high:
+          type: string
+          example: "46000.00"
+        low:
+          type: string
+          example: "43500.00"
+        volume:
+          type: string
+          example: "1234.567"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    Balance:
+      type: object
+      properties:
+        currency:
+          type: string
+          example: "BTC"
+        available:
+          type: string
+          example: "0.123456"
+        locked:
+          type: string
+          example: "0.010000"
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        user_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        transaction_type:
+          type: string
+          enum: [deposit, withdrawal, trade, fee]
+          example: "trade"
+        currency:
+          type: string
+          example: "BTC"
+        amount:
+          type: string
+          example: "0.001"
+        status:
+          type: string
+          enum: [pending, completed, failed, cancelled]
+          example: "completed"
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    ApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          description: "Response data (varies by endpoint)"
+        error:
+          type: string
+          nullable: true
+          description: "Error message (only present when success is false)"
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: "Error message"
+        code:
+          type: string
+          example: "VALIDATION_ERROR"
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: "Invalid request parameters"
+            code: "BAD_REQUEST"
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: "Authentication required"
+            code: "UNAUTHORIZED"
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: "Insufficient permissions"
+            code: "FORBIDDEN"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: "Resource not found"
+            code: "NOT_FOUND"
+
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: "Resource already exists"
+            code: "CONFLICT"
+
+    RateLimit:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: "Rate limit exceeded"
+            code: "RATE_LIMIT_EXCEEDED"
+
+tags:
+  - name: Authentication
+    description: User authentication and account management
+  - name: Trading
+    description: Trading operations and order management
+  - name: Market Data
+    description: Real-time and historical market data
+  - name: Wallet
+    description: Wallet operations and transaction history

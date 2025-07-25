@@ -1,0 +1,229 @@
+# FlowEx Production Alert Rules
+# =============================
+# 
+# Comprehensive alerting rules for FlowEx trading platform
+# Created by arkSong (arksong2018@gmail.com)
+
+groups:
+  # Service Health Alerts
+  - name: flowex.service.health
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "FlowEx service {{ $labels.job }} is down"
+          description: "Service {{ $labels.job }} on {{ $labels.instance }} has been down for more than 1 minute."
+          runbook_url: "https://docs.flowex.com/runbooks/service-down"
+
+      - alert: ServiceHighErrorRate
+        expr: rate(flowex_http_requests_total{status=~"5.."}[5m]) / rate(flowex_http_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "Service {{ $labels.job }} has error rate above 5% for more than 2 minutes."
+
+      - alert: ServiceHighLatency
+        expr: histogram_quantile(0.95, rate(flowex_http_request_duration_seconds_bucket[5m])) > 1
+        for: 3m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High latency on {{ $labels.job }}"
+          description: "95th percentile latency is above 1s for {{ $labels.job }}."
+
+  # Trading System Alerts
+  - name: flowex.trading.alerts
+    rules:
+      - alert: TradingServiceDown
+        expr: up{job="flowex-trading-service"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          team: trading
+        annotations:
+          summary: "Trading service is down"
+          description: "Critical: Trading service is unavailable. All trading operations are halted."
+          runbook_url: "https://docs.flowex.com/runbooks/trading-service-down"
+
+      - alert: HighOrderProcessingTime
+        expr: histogram_quantile(0.95, rate(flowex_order_processing_duration_seconds_bucket[5m])) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+          team: trading
+        annotations:
+          summary: "High order processing time"
+          description: "95th percentile order processing time is above 500ms."
+
+      - alert: OrderMatchingEngineStalled
+        expr: rate(flowex_trades_total[5m]) == 0 and rate(flowex_orders_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: trading
+        annotations:
+          summary: "Order matching engine appears stalled"
+          description: "Orders are being created but no trades are being executed."
+
+  # Database Alerts
+  - name: flowex.database.alerts
+    rules:
+      - alert: DatabaseDown
+        expr: up{job="postgres"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "Critical: Main database is unavailable."
+
+      - alert: DatabaseHighConnections
+        expr: pg_stat_database_numbackends / pg_settings_max_connections > 0.8
+        for: 2m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "High database connection usage"
+          description: "Database connection usage is above 80%."
+
+      - alert: DatabaseSlowQueries
+        expr: rate(pg_stat_database_tup_returned[5m]) / rate(pg_stat_database_tup_fetched[5m]) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Database queries are slow"
+          description: "Database query efficiency is below 10%."
+
+  # Cache Alerts
+  - name: flowex.cache.alerts
+    rules:
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Redis cache is down"
+          description: "Redis cache service is unavailable."
+
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 2m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Redis memory usage is high"
+          description: "Redis memory usage is above 90%."
+
+      - alert: CacheLowHitRate
+        expr: rate(flowex_cache_hits_total[5m]) / (rate(flowex_cache_hits_total[5m]) + rate(flowex_cache_misses_total[5m])) < 0.7
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is below 70%."
+
+  # System Resource Alerts
+  - name: flowex.system.alerts
+    rules:
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is above 80% for more than 5 minutes."
+
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.9
+        for: 2m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is above 90%."
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.1
+        for: 1m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk space is below 10% on {{ $labels.mountpoint }}."
+
+  # Business Logic Alerts
+  - name: flowex.business.alerts
+    rules:
+      - alert: UnusualTradingVolume
+        expr: rate(flowex_trade_volume_total[1h]) > 2 * rate(flowex_trade_volume_total[24h] offset 24h)
+        for: 5m
+        labels:
+          severity: warning
+          team: business
+        annotations:
+          summary: "Unusual trading volume detected"
+          description: "Trading volume is 2x higher than the same time yesterday."
+
+      - alert: NoTradingActivity
+        expr: rate(flowex_trades_total[30m]) == 0
+        for: 30m
+        labels:
+          severity: warning
+          team: business
+        annotations:
+          summary: "No trading activity"
+          description: "No trades have been executed in the last 30 minutes."
+
+      - alert: HighFailedTransactions
+        expr: rate(flowex_transactions_total{status="failed"}[5m]) / rate(flowex_transactions_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          team: business
+        annotations:
+          summary: "High failed transaction rate"
+          description: "Failed transaction rate is above 10%."
+
+  # Security Alerts
+  - name: flowex.security.alerts
+    rules:
+      - alert: HighFailedLoginAttempts
+        expr: rate(flowex_login_attempts_total{status="failed"}[5m]) > 10
+        for: 1m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "High failed login attempts"
+          description: "More than 10 failed login attempts per second."
+
+      - alert: SuspiciousAPIActivity
+        expr: rate(flowex_http_requests_total{status="401"}[5m]) > 50
+        for: 2m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "Suspicious API activity"
+          description: "High rate of unauthorized API requests."

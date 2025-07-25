@@ -1,0 +1,144 @@
+# FlowEx Production Prometheus Configuration
+# ==========================================
+# 
+# Enterprise-grade monitoring configuration for FlowEx trading platform
+# Created by arkSong (arksong2018@gmail.com)
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'flowex-production'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+  - "alert_rules.yml"
+  - "recording_rules.yml"
+
+# A scrape configuration containing exactly one endpoint to scrape:
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # FlowEx API Gateway
+  - job_name: 'flowex-api-gateway'
+    static_configs:
+      - targets: ['api-gateway:8000']
+    scrape_interval: 15s
+    metrics_path: /metrics
+    scrape_timeout: 10s
+    honor_labels: true
+    params:
+      format: ['prometheus']
+
+  # FlowEx Authentication Service
+  - job_name: 'flowex-auth-service'
+    static_configs:
+      - targets: ['auth-service:8001']
+    scrape_interval: 15s
+    metrics_path: /metrics
+    scrape_timeout: 10s
+
+  # FlowEx Trading Service
+  - job_name: 'flowex-trading-service'
+    static_configs:
+      - targets: ['trading-service:8002']
+    scrape_interval: 10s  # More frequent for trading metrics
+    metrics_path: /metrics
+    scrape_timeout: 10s
+
+  # FlowEx Market Data Service
+  - job_name: 'flowex-market-data-service'
+    static_configs:
+      - targets: ['market-data-service:8003']
+    scrape_interval: 10s  # More frequent for market data
+    metrics_path: /metrics
+    scrape_timeout: 10s
+
+  # FlowEx Wallet Service
+  - job_name: 'flowex-wallet-service'
+    static_configs:
+      - targets: ['wallet-service:8004']
+    scrape_interval: 15s
+    metrics_path: /metrics
+    scrape_timeout: 10s
+
+  # PostgreSQL Database
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # Redis Cache
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # Node Exporter (System metrics)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # cAdvisor (Container metrics)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # Nginx (if used as reverse proxy)
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx-exporter:9113']
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # Blackbox exporter for endpoint monitoring
+  - job_name: 'blackbox'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - http://api-gateway:8000/health
+        - http://auth-service:8001/health
+        - http://trading-service:8002/health
+        - http://market-data-service:8003/health
+        - http://wallet-service:8004/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+# Remote write configuration for long-term storage (optional)
+remote_write:
+  - url: "http://thanos-receive:19291/api/v1/receive"
+    queue_config:
+      max_samples_per_send: 1000
+      max_shards: 200
+      capacity: 2500
+
+# Remote read configuration (optional)
+remote_read:
+  - url: "http://thanos-query:10902/api/v1/query"
+    read_recent: true

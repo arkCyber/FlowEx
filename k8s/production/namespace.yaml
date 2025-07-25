@@ -1,0 +1,266 @@
+# FlowEx Production Kubernetes Namespace
+# ======================================
+# 
+# Production namespace configuration for FlowEx trading platform
+# Created by arkSong (arksong2018@gmail.com)
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: flowex-production
+  labels:
+    name: flowex-production
+    environment: production
+    app.kubernetes.io/name: flowex
+    app.kubernetes.io/instance: production
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: platform
+    app.kubernetes.io/part-of: flowex-trading-platform
+    app.kubernetes.io/managed-by: kubernetes
+  annotations:
+    description: "FlowEx Enterprise Trading Platform - Production Environment"
+    contact: "arksong2018@gmail.com"
+    documentation: "https://docs.flowex.com"
+    
+---
+# Resource Quota for Production Namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: flowex-production-quota
+  namespace: flowex-production
+  labels:
+    app.kubernetes.io/name: flowex
+    app.kubernetes.io/instance: production
+spec:
+  hard:
+    # Compute resources
+    requests.cpu: "20"
+    requests.memory: 40Gi
+    limits.cpu: "40"
+    limits.memory: 80Gi
+    
+    # Storage resources
+    requests.storage: 1Ti
+    persistentvolumeclaims: "20"
+    
+    # Object counts
+    pods: "100"
+    services: "50"
+    secrets: "50"
+    configmaps: "50"
+    replicationcontrollers: "20"
+    deployments.apps: "20"
+    statefulsets.apps: "10"
+    
+---
+# Network Policy for Production Security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: flowex-production-network-policy
+  namespace: flowex-production
+  labels:
+    app.kubernetes.io/name: flowex
+    app.kubernetes.io/instance: production
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  
+  # Ingress rules
+  ingress:
+  # Allow traffic from ingress controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8000
+    - protocol: TCP
+      port: 8001
+    - protocol: TCP
+      port: 8002
+    - protocol: TCP
+      port: 8003
+    - protocol: TCP
+      port: 8004
+  
+  # Allow internal communication within namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: flowex-production
+    ports:
+    - protocol: TCP
+      port: 8000
+    - protocol: TCP
+      port: 8001
+    - protocol: TCP
+      port: 8002
+    - protocol: TCP
+      port: 8003
+    - protocol: TCP
+      port: 8004
+    - protocol: TCP
+      port: 5432  # PostgreSQL
+    - protocol: TCP
+      port: 6379  # Redis
+  
+  # Allow monitoring traffic
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090  # Metrics endpoint
+  
+  # Egress rules
+  egress:
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  
+  # Allow HTTPS traffic for external APIs
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+  
+  # Allow internal communication
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: flowex-production
+  
+  # Allow communication with monitoring
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090
+    - protocol: TCP
+      port: 9093
+
+---
+# Pod Security Standards (replaces deprecated PodSecurityPolicy)
+# Note: This would be enforced via namespace labels in modern Kubernetes
+# kubectl label namespace flowex-production pod-security.kubernetes.io/enforce=restricted
+metadata:
+  name: flowex-production-psp
+  namespace: flowex-production
+  labels:
+    app.kubernetes.io/name: flowex
+    app.kubernetes.io/instance: production
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+    - ALL
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    - 'persistentVolumeClaim'
+  hostNetwork: false
+  hostIPC: false
+  hostPID: false
+  runAsUser:
+    rule: 'MustRunAsNonRoot'
+  supplementalGroups:
+    rule: 'MustRunAs'
+    ranges:
+      - min: 1
+        max: 65535
+  fsGroup:
+    rule: 'MustRunAs'
+    ranges:
+      - min: 1
+        max: 65535
+  readOnlyRootFilesystem: false
+
+---
+# Service Account for FlowEx Services
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flowex-service-account
+  namespace: flowex-production
+  labels:
+    app.kubernetes.io/name: flowex
+    app.kubernetes.io/instance: production
+automountServiceAccountToken: false
+
+---
+# Role for FlowEx Services
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: flowex-service-role
+  namespace: flowex-production
+  labels:
+    app.kubernetes.io/name: flowex
+    app.kubernetes.io/instance: production
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+
+---
+# Role Binding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: flowex-service-rolebinding
+  namespace: flowex-production
+  labels:
+    app.kubernetes.io/name: flowex
+    app.kubernetes.io/instance: production
+subjects:
+- kind: ServiceAccount
+  name: flowex-service-account
+  namespace: flowex-production
+roleRef:
+  kind: Role
+  name: flowex-service-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Priority Class for Critical Services
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: flowex-critical
+  labels:
+    app.kubernetes.io/name: flowex
+    app.kubernetes.io/instance: production
+value: 1000
+globalDefault: false
+description: "Priority class for critical FlowEx services"
+
+---
+# Priority Class for Standard Services
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: flowex-standard
+  labels:
+    app.kubernetes.io/name: flowex
+    app.kubernetes.io/instance: production
+value: 500
+globalDefault: false
+description: "Priority class for standard FlowEx services"
