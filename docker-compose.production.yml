@@ -1,0 +1,259 @@
+version: '3.8'
+
+services:
+  # Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: flowex-postgres
+    environment:
+      POSTGRES_DB: flowex
+      POSTGRES_USER: flowex
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-flowex_secure_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    networks:
+      - flowex-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowex"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: flowex-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-flowex_redis_password}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - flowex-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: .
+      dockerfile: backend/services/api-gateway/Dockerfile
+    container_name: flowex-api-gateway
+    environment:
+      - RUST_LOG=info
+      - FLOWEX_HOST=0.0.0.0
+      - FLOWEX_PORT=8000
+      - FLOWEX_DATABASE_URL=postgresql://flowex:${POSTGRES_PASSWORD:-flowex_secure_password}@postgres:5432/flowex
+      - FLOWEX_REDIS_URL=redis://:${REDIS_PASSWORD:-flowex_redis_password}@redis:6379
+      - FLOWEX_JWT_SECRET=${JWT_SECRET:-flowex_jwt_secret_key_2024}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - flowex-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Authentication Service
+  auth-service:
+    build:
+      context: .
+      dockerfile: backend/services/auth-service/Dockerfile
+    container_name: flowex-auth-service
+    environment:
+      - RUST_LOG=info
+      - FLOWEX_HOST=0.0.0.0
+      - FLOWEX_PORT=8001
+      - FLOWEX_DATABASE_URL=postgresql://flowex:${POSTGRES_PASSWORD:-flowex_secure_password}@postgres:5432/flowex
+      - FLOWEX_REDIS_URL=redis://:${REDIS_PASSWORD:-flowex_redis_password}@redis:6379
+      - FLOWEX_JWT_SECRET=${JWT_SECRET:-flowex_jwt_secret_key_2024}
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - flowex-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Trading Service
+  trading-service:
+    build:
+      context: .
+      dockerfile: backend/services/trading-service/Dockerfile
+    container_name: flowex-trading-service
+    environment:
+      - RUST_LOG=info
+      - FLOWEX_HOST=0.0.0.0
+      - FLOWEX_PORT=8002
+      - FLOWEX_DATABASE_URL=postgresql://flowex:${POSTGRES_PASSWORD:-flowex_secure_password}@postgres:5432/flowex
+      - FLOWEX_REDIS_URL=redis://:${REDIS_PASSWORD:-flowex_redis_password}@redis:6379
+      - FLOWEX_JWT_SECRET=${JWT_SECRET:-flowex_jwt_secret_key_2024}
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - flowex-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Market Data Service
+  market-data-service:
+    build:
+      context: .
+      dockerfile: backend/services/market-data-service/Dockerfile
+    container_name: flowex-market-data-service
+    environment:
+      - RUST_LOG=info
+      - FLOWEX_HOST=0.0.0.0
+      - FLOWEX_PORT=8003
+      - FLOWEX_DATABASE_URL=postgresql://flowex:${POSTGRES_PASSWORD:-flowex_secure_password}@postgres:5432/flowex
+      - FLOWEX_REDIS_URL=redis://:${REDIS_PASSWORD:-flowex_redis_password}@redis:6379
+      - FLOWEX_JWT_SECRET=${JWT_SECRET:-flowex_jwt_secret_key_2024}
+    ports:
+      - "8003:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - flowex-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Wallet Service
+  wallet-service:
+    build:
+      context: .
+      dockerfile: backend/services/wallet-service/Dockerfile
+    container_name: flowex-wallet-service
+    environment:
+      - RUST_LOG=info
+      - FLOWEX_HOST=0.0.0.0
+      - FLOWEX_PORT=8004
+      - FLOWEX_DATABASE_URL=postgresql://flowex:${POSTGRES_PASSWORD:-flowex_secure_password}@postgres:5432/flowex
+      - FLOWEX_REDIS_URL=redis://:${REDIS_PASSWORD:-flowex_redis_password}@redis:6379
+      - FLOWEX_JWT_SECRET=${JWT_SECRET:-flowex_jwt_secret_key_2024}
+    ports:
+      - "8004:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - flowex-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: flowex-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - flowex-network
+    restart: unless-stopped
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: flowex-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - flowex-network
+    restart: unless-stopped
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: flowex-nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api-gateway
+    networks:
+      - flowex-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  flowex-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

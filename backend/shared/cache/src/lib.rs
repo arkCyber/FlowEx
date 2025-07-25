@@ -82,10 +82,10 @@ impl CacheManager {
         T: for<'de> Deserialize<'de>,
     {
         let mut conn = self.connection_pool.clone();
-        
+
         let result: Option<String> = conn.get(key).await
             .map_err(|e| CacheError::Redis(e))?;
-        
+
         match result {
             Some(serialized) => {
                 let value = serde_json::from_str(&serialized)
@@ -98,6 +98,93 @@ impl CacheManager {
                 Ok(None)
             }
         }
+    }
+
+    /// Delete a key from cache
+    pub async fn delete(&self, key: &str) -> Result<bool, CacheError> {
+        let mut conn = self.connection_pool.clone();
+
+        let result: i32 = conn.del(key).await
+            .map_err(|e| CacheError::Redis(e))?;
+
+        let deleted = result > 0;
+        debug!("🗑️ Deleted key: {} (existed: {})", key, deleted);
+        Ok(deleted)
+    }
+
+    /// Check if a key exists in cache
+    pub async fn exists(&self, key: &str) -> Result<bool, CacheError> {
+        let mut conn = self.connection_pool.clone();
+
+        let result: bool = conn.exists(key).await
+            .map_err(|e| CacheError::Redis(e))?;
+
+        debug!("🔍 Key exists check: {} = {}", key, result);
+        Ok(result)
+    }
+
+    /// Set expiration for a key
+    pub async fn expire(&self, key: &str, ttl: Duration) -> Result<bool, CacheError> {
+        let mut conn = self.connection_pool.clone();
+
+        let result: bool = conn.expire(key, ttl.as_secs() as usize).await
+            .map_err(|e| CacheError::Redis(e))?;
+
+        debug!("⏰ Set expiration for key: {} ({}s)", key, ttl.as_secs());
+        Ok(result)
+    }
+
+    /// Get time to live for a key
+    pub async fn ttl(&self, key: &str) -> Result<i64, CacheError> {
+        let mut conn = self.connection_pool.clone();
+
+        let result: i64 = conn.ttl(key).await
+            .map_err(|e| CacheError::Redis(e))?;
+
+        debug!("⏱️ TTL for key: {} = {}s", key, result);
+        Ok(result)
+    }
+
+    /// Increment a numeric value
+    pub async fn increment(&self, key: &str, delta: i64) -> Result<i64, CacheError> {
+        let mut conn = self.connection_pool.clone();
+
+        let result: i64 = conn.incr(key, delta).await
+            .map_err(|e| CacheError::Redis(e))?;
+
+        debug!("➕ Incremented key: {} by {} = {}", key, delta, result);
+        Ok(result)
+    }
+
+    /// Set multiple key-value pairs
+    pub async fn set_multiple<T>(&self, pairs: Vec<(String, T)>, ttl: Option<Duration>) -> Result<(), CacheError>
+    where
+        T: Serialize,
+    {
+        let mut conn = self.connection_pool.clone();
+
+        for (key, value) in pairs {
+            self.set(&key, &value, ttl).await?;
+        }
+
+        debug!("📝 Set multiple keys with TTL: {:?}", ttl);
+        Ok(())
+    }
+
+    /// Get multiple values by keys
+    pub async fn get_multiple<T>(&self, keys: Vec<String>) -> Result<Vec<(String, Option<T>)>, CacheError>
+    where
+        T: for<'de> Deserialize<'de>,
+    {
+        let mut results = Vec::new();
+
+        for key in keys {
+            let value = self.get(&key).await?;
+            results.push((key, value));
+        }
+
+        debug!("📖 Retrieved multiple keys");
+        Ok(results)
     }
     
     /// Delete a key from cache

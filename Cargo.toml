@@ -1,10 +1,14 @@
 [workspace]
 resolver = "2"
 members = [
+    # Core services
     "backend/services/auth-service",
     "backend/services/trading-service",
     "backend/services/market-data-service",
     "backend/services/wallet-service",
+    "backend/services/api-gateway",
+
+    # Shared libraries
     "backend/shared/types",
     "backend/shared/database",
     "backend/shared/error-handling",
@@ -12,6 +16,9 @@ members = [
     "backend/shared/middleware",
     "backend/shared/config",
     "backend/shared/cache",
+    "backend/shared/auth",
+    "backend/shared/matching-engine",
+    "backend/shared/websocket",
 ]
 
 [workspace.package]
