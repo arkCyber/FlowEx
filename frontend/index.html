@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="FlowEx - Enterprise-grade cryptocurrency trading platform" />
+    <meta name="keywords" content="cryptocurrency, trading, bitcoin, ethereum, exchange" />
+    <meta name="author" content="FlowEx Team" />
+    
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' ws: wss: https:; font-src 'self' https:;" />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="X-Frame-Options" content="DENY" />
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block" />
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#667eea" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="FlowEx" />
+    
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="FlowEx Trading Platform" />
+    <meta property="og:description" content="Enterprise-grade cryptocurrency trading platform" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://app.flowex.com" />
+    <meta property="og:image" content="/og-image.png" />
+    
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="FlowEx Trading Platform" />
+    <meta name="twitter:description" content="Enterprise-grade cryptocurrency trading platform" />
+    <meta name="twitter:image" content="/twitter-image.png" />
+    
+    <!-- Preconnect to external domains -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    
+    <!-- Favicon -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    
+    <title>FlowEx - Enterprise Trading Platform</title>
+    
+    <!-- Critical CSS for faster loading -->
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background-color: #f8fafc;
+        color: #1e293b;
+        line-height: 1.6;
+      }
+      
+      #root {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      
+      /* Loading spinner */
+      .loading-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      }
+      
+      .loading-spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid rgba(255, 255, 255, 0.3);
+        border-top: 4px solid white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      .loading-text {
+        color: white;
+        margin-top: 20px;
+        font-size: 18px;
+        font-weight: 500;
+      }
+      
+      /* Error boundary styles */
+      .error-boundary {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        padding: 20px;
+        text-align: center;
+        background-color: #fef2f2;
+      }
+      
+      .error-icon {
+        font-size: 64px;
+        color: #dc2626;
+        margin-bottom: 20px;
+      }
+      
+      .error-title {
+        font-size: 24px;
+        font-weight: 600;
+        color: #991b1b;
+        margin-bottom: 10px;
+      }
+      
+      .error-message {
+        font-size: 16px;
+        color: #7f1d1d;
+        margin-bottom: 20px;
+        max-width: 600px;
+      }
+      
+      .error-button {
+        background-color: #dc2626;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        font-size: 16px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      
+      .error-button:hover {
+        background-color: #b91c1c;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <!-- Initial loading state -->
+      <div class="loading-container">
+        <div>
+          <div class="loading-spinner"></div>
+          <div class="loading-text">Loading FlowEx...</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Environment variables for runtime configuration -->
+    <script>
+      window.__FLOWEX_CONFIG__ = {
+        API_BASE_URL: 'http://localhost:8001',
+        WS_BASE_URL: 'ws://localhost:8001',
+        APP_VERSION: '1.0.0',
+        BUILD_TIME: new Date().toISOString(),
+        ENVIRONMENT: 'development'
+      };
+    </script>
+    
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

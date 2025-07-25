@@ -1,0 +1,77 @@
+[workspace]
+resolver = "2"
+members = [
+    "backend/services/auth-service",
+    "backend/services/trading-service",
+    "backend/services/market-data-service",
+    "backend/services/wallet-service",
+    "backend/shared/types",
+    "backend/shared/database",
+    "backend/shared/error-handling",
+    "backend/shared/metrics",
+    "backend/shared/middleware",
+    "backend/shared/config",
+    "backend/shared/cache",
+]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+authors = ["FlowEx Team <team@flowex.com>"]
+license = "MIT"
+keywords = ["trading", "cryptocurrency", "exchange", "enterprise", "rust"]
+rust-version = "1.70"
+
+[workspace.dependencies]
+# Core async runtime and web framework
+tokio = { version = "1.35", features = ["full"] }
+axum = { version = "0.7", features = ["macros", "ws"] }
+tower = { version = "0.4", features = ["full"] }
+tower-http = { version = "0.5", features = ["full"] }
+
+# Serialization and data handling
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rust_decimal = { version = "1.33", features = ["serde-float"] }
+uuid = { version = "1.6", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Database and caching
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "migrate"] }
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+
+# Authentication and security
+jsonwebtoken = "9.2"
+bcrypt = "0.15"
+argon2 = "0.5"
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-opentelemetry = "0.22"
+opentelemetry = { version = "0.21", features = ["rt-tokio"] }
+opentelemetry-jaeger = { version = "0.20", features = ["rt-tokio"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Configuration management
+config = "0.14"
+dotenvy = "0.15"
+
+# Metrics and monitoring
+metrics = "0.22"
+metrics-exporter-prometheus = "0.13"
+
+# Rate limiting and security
+tower-governor = "0.3"
+governor = "0.6"
+
+# Validation
+validator = { version = "0.18", features = ["derive"] }
+
+# Testing
+mockall = "0.12"
+wiremock = "0.6"
+testcontainers = "0.15"

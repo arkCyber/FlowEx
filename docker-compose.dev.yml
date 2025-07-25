@@ -1,0 +1,75 @@
+# FlowEx Development Docker Compose
+# Optimized for development with hot reload and debugging
+
+version: '3.8'
+
+services:
+  # Database Services
+  postgres:
+    image: postgres:15-alpine
+    container_name: flowex-postgres-dev
+    environment:
+      POSTGRES_DB: flowex_dev
+      POSTGRES_USER: flowex
+      POSTGRES_PASSWORD: flowex_dev_password
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    networks:
+      - flowex-dev-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: flowex-redis-dev
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_dev_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - flowex-dev-network
+    restart: unless-stopped
+
+  # Frontend Development Server
+  frontend-dev:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: flowex-frontend-dev
+    environment:
+      VITE_API_BASE_URL: http://localhost:8001
+      VITE_WS_BASE_URL: ws://localhost:8001
+      VITE_ENVIRONMENT: development
+      VITE_ENABLE_DEVTOOLS: true
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    networks:
+      - flowex-dev-network
+    restart: unless-stopped
+    command: npm run dev
+
+  # Development Tools
+  mailhog:
+    image: mailhog/mailhog
+    container_name: flowex-mailhog-dev
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - flowex-dev-network
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+
+networks:
+  flowex-dev-network:
+    driver: bridge

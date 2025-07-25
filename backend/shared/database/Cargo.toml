@@ -1,0 +1,19 @@
+[package]
+name = "flowex-database"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+flowex-types = { path = "../types" }
+sqlx.workspace = true
+tokio.workspace = true
+serde.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+md5 = "0.7"

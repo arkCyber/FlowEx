@@ -1,0 +1,28 @@
+{
+  "name": "flowex",
+  "version": "1.0.0",
+  "description": "FlowEx Enterprise Trading Platform",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/start-enterprise-environment.js",
+    "dev:backend": "node scripts/start-mock-backend.js",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:docker": "docker-compose -f docker-compose.dev.yml up -d",
+    "test": "node scripts/run-comprehensive-tests.js",
+    "test:frontend": "cd frontend && npm test",
+    "build": "cargo build --release",
+    "build:frontend": "./scripts/build-frontend.sh",
+    "build:all": "npm run build && npm run build:frontend",
+    "start": "npm run dev",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "docker:build": "docker-compose build",
+    "install:frontend": "cd frontend && npm install",
+    "lint:frontend": "cd frontend && npm run lint",
+    "format:frontend": "cd frontend && npm run format"
+  },
+  "keywords": ["trading", "enterprise", "react", "typescript"],
+  "author": "FlowEx Team",
+  "license": "MIT"
+}

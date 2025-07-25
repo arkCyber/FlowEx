@@ -1,0 +1,14 @@
+[package]
+name = "flowex-error-handling"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+flowex-types = { path = "../types" }
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+serde.workspace = true
+axum.workspace = true
