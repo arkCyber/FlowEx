@@ -23,6 +23,17 @@
     "format:frontend": "cd frontend && npm run format"
   },
   "keywords": ["trading", "enterprise", "react", "typescript"],
-  "author": "FlowEx Team",
+  "author": {
+    "name": "arkSong",
+    "email": "arksong2018@gmail.com",
+    "url": "https://github.com/arkCyber"
+  },
+  "contributors": [
+    {
+      "name": "arkSong",
+      "email": "arksong2018@gmail.com",
+      "role": "Founder & Lead Developer"
+    }
+  ],
   "license": "MIT"
 }

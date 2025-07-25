@@ -1,9 +1,18 @@
 # FlowEx - Enterprise Trading Platform
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/flowex/flowex)
-[![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)](https://github.com/flowex/flowex)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/arkCyber/FlowEx)
+[![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)](https://github.com/arkCyber/FlowEx)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75+-orange)](https://www.rust-lang.org/)
+
+> **Created by arkSong** - Founder & Lead Developer
+> 📧 Contact: arksong2018@gmail.com
+> 🌟 **Support this innovative project!** Star us on GitHub!
+
+## 📖 Documentation
+
+- **[English Documentation](README.md)** (Current)
+- **[中文文档 (Chinese)](README_CN.md)**
 
 **FlowEx** is a high-performance, enterprise-grade cryptocurrency trading platform built with Rust. It provides a complete trading ecosystem with microservices architecture, real-time market data, advanced order management, and institutional-grade security.
 
@@ -29,7 +38,7 @@ FlowEx follows a microservices architecture with the following core services:
 
 ```bash
 # Clone the repository
-git clone https://github.com/flowex/flowex.git
+git clone https://github.com/arkCyber/FlowEx.git
 cd FlowEx
 
 # Copy environment configuration
@@ -294,3 +303,40 @@ Tests automatically check all API endpoints and generate a detailed report.
 This is a complete, enterprise-grade development environment that runs with just Node.js. No additional setup required!
 
 Start with: `npm run dev`
+
+## 👨‍💻 About the Creator
+
+**FlowEx** is created and maintained by **arkSong**, a passionate developer dedicated to building innovative trading solutions.
+
+- 🚀 **Founder**: arkSong
+- 📧 **Contact**: arksong2018@gmail.com
+- 🌐 **GitHub**: [@arkCyber](https://github.com/arkCyber)
+- 💡 **Vision**: Creating the next generation of enterprise trading platforms
+
+### 🌟 Support This Project
+
+If you find FlowEx useful, please:
+- ⭐ **Star this repository** on GitHub
+- 🍴 **Fork** and contribute to the project
+- 📢 **Share** with your network
+- 💬 **Join** our community discussions
+
+Your support helps drive innovation in the trading technology space!
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+
+## 📞 Contact & Support
+
+- **Issues**: [GitHub Issues](https://github.com/arkCyber/FlowEx/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/arkCyber/FlowEx/discussions)
+- **Email**: arksong2018@gmail.com
+
+---
+
+**Made with ❤️ by arkSong and the FlowEx community**
