@@ -15,7 +15,7 @@ flowex-metrics = { path = "../../shared/metrics" }
 flowex-cache = { path = "../../shared/cache" }
 
 # Web framework
-axum = { version = "0.7", features = ["ws", "headers"] }
+axum = { version = "0.7", features = ["ws"] }
 tower = { version = "0.4", features = ["full"] }
 tower-http = { version = "0.5", features = ["full"] }
 hyper = { version = "1.0", features = ["full"] }

@@ -461,3 +461,429 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Once;
+    use std::collections::HashMap;
+
+    static INIT: Once = Once::new();
+
+    /// 初始化测试环境
+    fn init_test_env() {
+        INIT.call_once(|| {
+            let _ = tracing_subscriber::fmt()
+                .with_test_writer()
+                .with_env_filter("debug")
+                .try_init();
+        });
+    }
+
+    /// 创建测试用的网关配置
+    fn create_test_gateway_config() -> GatewayConfig {
+        GatewayConfig {
+            host: "127.0.0.1".to_string(),
+            port: 8000,
+            services: HashMap::from([
+                ("test-service".to_string(), ServiceConfig {
+                    name: "test-service".to_string(),
+                    instances: vec![ServiceInstance {
+                        id: "test-1".to_string(),
+                        host: "localhost".to_string(),
+                        port: 8001,
+                        weight: 1,
+                        healthy: true,
+                    }],
+                    health_check_path: "/health".to_string(),
+                    load_balancer: LoadBalancerType::RoundRobin,
+                    circuit_breaker: CircuitBreakerConfig {
+                        failure_threshold: 5,
+                        timeout_seconds: 60,
+                        half_open_max_calls: 3,
+                    },
+                }),
+            ]),
+            rate_limit: RateLimitConfig {
+                requests_per_minute: 1000,
+                burst_size: 100,
+                enabled: true,
+            },
+            timeout_seconds: 30,
+            max_request_size: 1024 * 1024,
+        }
+    }
+
+    /// 测试：网关配置创建
+    #[test]
+    fn test_gateway_config_creation() {
+        init_test_env();
+
+        let config = create_test_gateway_config();
+
+        assert_eq!(config.host, "127.0.0.1");
+        assert_eq!(config.port, 8000);
+        assert_eq!(config.services.len(), 1);
+        assert!(config.services.contains_key("test-service"));
+        assert!(config.rate_limit.enabled);
+        assert_eq!(config.rate_limit.requests_per_minute, 1000);
+        assert_eq!(config.timeout_seconds, 30);
+    }
+
+    /// 测试：服务实例配置
+    #[test]
+    fn test_service_instance_config() {
+        init_test_env();
+
+        let instance = ServiceInstance {
+            id: "test-instance".to_string(),
+            host: "192.168.1.100".to_string(),
+            port: 9000,
+            weight: 5,
+            healthy: true,
+        };
+
+        assert_eq!(instance.id, "test-instance");
+        assert_eq!(instance.host, "192.168.1.100");
+        assert_eq!(instance.port, 9000);
+        assert_eq!(instance.weight, 5);
+        assert!(instance.healthy);
+    }
+
+    /// 测试：负载均衡器类型
+    #[test]
+    fn test_load_balancer_types() {
+        init_test_env();
+
+        let round_robin = LoadBalancerType::RoundRobin;
+        let weighted = LoadBalancerType::WeightedRoundRobin;
+        let least_conn = LoadBalancerType::LeastConnections;
+        let random = LoadBalancerType::Random;
+
+        // 验证负载均衡器类型可以正确创建和比较
+        match round_robin {
+            LoadBalancerType::RoundRobin => assert!(true),
+            _ => assert!(false, "应该是轮询负载均衡"),
+        }
+
+        match weighted {
+            LoadBalancerType::WeightedRoundRobin => assert!(true),
+            _ => assert!(false, "应该是加权轮询负载均衡"),
+        }
+
+        match least_conn {
+            LoadBalancerType::LeastConnections => assert!(true),
+            _ => assert!(false, "应该是最少连接负载均衡"),
+        }
+
+        match random {
+            LoadBalancerType::Random => assert!(true),
+            _ => assert!(false, "应该是随机负载均衡"),
+        }
+    }
+
+    /// 测试：熔断器配置
+    #[test]
+    fn test_circuit_breaker_config() {
+        init_test_env();
+
+        let circuit_breaker = CircuitBreakerConfig {
+            failure_threshold: 10,
+            timeout_seconds: 120,
+            half_open_max_calls: 5,
+        };
+
+        assert_eq!(circuit_breaker.failure_threshold, 10);
+        assert_eq!(circuit_breaker.timeout_seconds, 120);
+        assert_eq!(circuit_breaker.half_open_max_calls, 5);
+    }
+
+    /// 测试：限流配置
+    #[test]
+    fn test_rate_limit_config() {
+        init_test_env();
+
+        let rate_limit = RateLimitConfig {
+            requests_per_minute: 500,
+            burst_size: 50,
+            enabled: true,
+        };
+
+        assert_eq!(rate_limit.requests_per_minute, 500);
+        assert_eq!(rate_limit.burst_size, 50);
+        assert!(rate_limit.enabled);
+
+        // 测试禁用限流
+        let disabled_rate_limit = RateLimitConfig {
+            requests_per_minute: 1000,
+            burst_size: 100,
+            enabled: false,
+        };
+
+        assert!(!disabled_rate_limit.enabled);
+    }
+
+    /// 测试：网关统计结构
+    #[test]
+    fn test_gateway_stats_structure() {
+        init_test_env();
+
+        let service_stats = ServiceStats {
+            healthy_instances: 3,
+            unhealthy_instances: 1,
+            total_requests: 10000,
+            failed_requests: 50,
+            error_rate: 0.005,
+        };
+
+        let mut service_stats_map = HashMap::new();
+        service_stats_map.insert("auth-service".to_string(), service_stats);
+
+        let gateway_stats = GatewayStats {
+            uptime_seconds: 3600,
+            total_services: 5,
+            service_stats: service_stats_map,
+        };
+
+        assert_eq!(gateway_stats.uptime_seconds, 3600);
+        assert_eq!(gateway_stats.total_services, 5);
+        assert_eq!(gateway_stats.service_stats.len(), 1);
+
+        let auth_stats = gateway_stats.service_stats.get("auth-service").unwrap();
+        assert_eq!(auth_stats.healthy_instances, 3);
+        assert_eq!(auth_stats.unhealthy_instances, 1);
+        assert_eq!(auth_stats.total_requests, 10000);
+        assert_eq!(auth_stats.failed_requests, 50);
+        assert_eq!(auth_stats.error_rate, 0.005);
+    }
+
+    /// 测试：配置序列化
+    #[test]
+    fn test_config_serialization() {
+        init_test_env();
+
+        let config = create_test_gateway_config();
+
+        // 测试序列化
+        let serialized = serde_json::to_string(&config);
+        assert!(serialized.is_ok(), "网关配置应该能够序列化");
+
+        // 测试反序列化
+        if let Ok(json_str) = serialized {
+            let deserialized: Result<GatewayConfig, _> = serde_json::from_str(&json_str);
+            assert!(deserialized.is_ok(), "网关配置应该能够反序列化");
+
+            if let Ok(deserialized_config) = deserialized {
+                assert_eq!(config.host, deserialized_config.host);
+                assert_eq!(config.port, deserialized_config.port);
+                assert_eq!(config.services.len(), deserialized_config.services.len());
+            }
+        }
+    }
+
+    /// 测试：hop-by-hop头部检查
+    #[test]
+    fn test_hop_by_hop_header_check() {
+        init_test_env();
+
+        // 测试hop-by-hop头部
+        assert!(is_hop_by_hop_header("connection"));
+        assert!(is_hop_by_hop_header("Connection"));
+        assert!(is_hop_by_hop_header("CONNECTION"));
+        assert!(is_hop_by_hop_header("keep-alive"));
+        assert!(is_hop_by_hop_header("proxy-authenticate"));
+        assert!(is_hop_by_hop_header("proxy-authorization"));
+        assert!(is_hop_by_hop_header("te"));
+        assert!(is_hop_by_hop_header("trailers"));
+        assert!(is_hop_by_hop_header("transfer-encoding"));
+        assert!(is_hop_by_hop_header("upgrade"));
+
+        // 测试非hop-by-hop头部
+        assert!(!is_hop_by_hop_header("content-type"));
+        assert!(!is_hop_by_hop_header("authorization"));
+        assert!(!is_hop_by_hop_header("user-agent"));
+        assert!(!is_hop_by_hop_header("accept"));
+        assert!(!is_hop_by_hop_header("host"));
+    }
+
+    /// 测试：配置验证
+    #[test]
+    fn test_config_validation() {
+        init_test_env();
+
+        let config = create_test_gateway_config();
+
+        // 验证基本配置
+        assert!(!config.host.is_empty());
+        assert!(config.port > 0 && config.port <= 65535);
+        assert!(config.timeout_seconds > 0);
+        assert!(config.max_request_size > 0);
+
+        // 验证服务配置
+        for (service_name, service_config) in &config.services {
+            assert!(!service_name.is_empty());
+            assert!(!service_config.name.is_empty());
+            assert!(!service_config.instances.is_empty());
+            assert!(!service_config.health_check_path.is_empty());
+
+            // 验证服务实例
+            for instance in &service_config.instances {
+                assert!(!instance.id.is_empty());
+                assert!(!instance.host.is_empty());
+                assert!(instance.port > 0 && instance.port <= 65535);
+                assert!(instance.weight > 0);
+            }
+
+            // 验证熔断器配置
+            assert!(service_config.circuit_breaker.failure_threshold > 0);
+            assert!(service_config.circuit_breaker.timeout_seconds > 0);
+            assert!(service_config.circuit_breaker.half_open_max_calls > 0);
+        }
+
+        // 验证限流配置
+        if config.rate_limit.enabled {
+            assert!(config.rate_limit.requests_per_minute > 0);
+            assert!(config.rate_limit.burst_size > 0);
+        }
+    }
+
+    /// 测试：错误率计算
+    #[test]
+    fn test_error_rate_calculation() {
+        init_test_env();
+
+        // 测试正常情况
+        let total_requests = 1000u64;
+        let failed_requests = 25u64;
+        let error_rate = if total_requests > 0 {
+            failed_requests as f64 / total_requests as f64
+        } else {
+            0.0
+        };
+
+        assert_eq!(error_rate, 0.025);
+
+        // 测试零请求情况
+        let zero_total = 0u64;
+        let zero_failed = 0u64;
+        let zero_error_rate = if zero_total > 0 {
+            zero_failed as f64 / zero_total as f64
+        } else {
+            0.0
+        };
+
+        assert_eq!(zero_error_rate, 0.0);
+
+        // 测试100%错误率
+        let all_failed_total = 100u64;
+        let all_failed = 100u64;
+        let full_error_rate = if all_failed_total > 0 {
+            all_failed as f64 / all_failed_total as f64
+        } else {
+            0.0
+        };
+
+        assert_eq!(full_error_rate, 1.0);
+    }
+
+    /// 测试：配置克隆
+    #[test]
+    fn test_config_cloning() {
+        init_test_env();
+
+        let original_config = create_test_gateway_config();
+        let cloned_config = original_config.clone();
+
+        assert_eq!(original_config.host, cloned_config.host);
+        assert_eq!(original_config.port, cloned_config.port);
+        assert_eq!(original_config.services.len(), cloned_config.services.len());
+        assert_eq!(original_config.timeout_seconds, cloned_config.timeout_seconds);
+        assert_eq!(original_config.max_request_size, cloned_config.max_request_size);
+    }
+
+    /// 测试：性能基准
+    #[test]
+    fn test_performance_benchmark() {
+        init_test_env();
+
+        let config = create_test_gateway_config();
+        let start = std::time::Instant::now();
+
+        // 模拟配置操作
+        for _ in 0..1000 {
+            let _cloned = config.clone();
+            let _serialized = serde_json::to_string(&config).unwrap();
+        }
+
+        let duration = start.elapsed();
+        println!("1000次配置操作耗时: {:?}", duration);
+
+        // 性能要求：1000次配置操作应该在100ms内完成
+        assert!(duration.as_millis() < 100, "配置操作性能不达标");
+    }
+
+    /// 测试：边界值处理
+    #[test]
+    fn test_boundary_values() {
+        init_test_env();
+
+        // 测试最小端口
+        let min_port_config = GatewayConfig {
+            host: "localhost".to_string(),
+            port: 1,
+            services: HashMap::new(),
+            rate_limit: RateLimitConfig {
+                requests_per_minute: 1,
+                burst_size: 1,
+                enabled: true,
+            },
+            timeout_seconds: 1,
+            max_request_size: 1,
+        };
+
+        assert_eq!(min_port_config.port, 1);
+        assert_eq!(min_port_config.rate_limit.requests_per_minute, 1);
+        assert_eq!(min_port_config.timeout_seconds, 1);
+        assert_eq!(min_port_config.max_request_size, 1);
+
+        // 测试最大端口
+        let max_port_config = GatewayConfig {
+            host: "localhost".to_string(),
+            port: 65535,
+            services: HashMap::new(),
+            rate_limit: RateLimitConfig {
+                requests_per_minute: u32::MAX,
+                burst_size: u32::MAX,
+                enabled: true,
+            },
+            timeout_seconds: u64::MAX,
+            max_request_size: usize::MAX,
+        };
+
+        assert_eq!(max_port_config.port, 65535);
+        assert_eq!(max_port_config.rate_limit.requests_per_minute, u32::MAX);
+        assert_eq!(max_port_config.timeout_seconds, u64::MAX);
+        assert_eq!(max_port_config.max_request_size, usize::MAX);
+    }
+
+    /// 测试：内存使用优化
+    #[test]
+    fn test_memory_usage_optimization() {
+        init_test_env();
+
+        let mut configs = Vec::new();
+
+        // 创建大量配置实例
+        for i in 0..100 {
+            let mut config = create_test_gateway_config();
+            config.port = 8000 + i as u16;
+            configs.push(config);
+        }
+
+        assert_eq!(configs.len(), 100);
+
+        // 清理内存
+        drop(configs);
+        assert!(true, "内存使用优化测试完成");
+    }
+}

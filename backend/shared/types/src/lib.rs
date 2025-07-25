@@ -6,7 +6,7 @@
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+// use std::collections::HashMap; // 暂时注释掉未使用的导入
 use uuid::Uuid;
 
 /// User account information

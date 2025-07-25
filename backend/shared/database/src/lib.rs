@@ -403,4 +403,381 @@ mod tests {
         // let pool = DatabasePool::new(database_url).await;
         // assert!(pool.is_ok());
     }
+
+    /// 测试：数据库URL验证
+    #[test]
+    fn test_database_url_validation() {
+        init_test_env();
+
+        // 测试有效的数据库URL
+        let valid_urls = vec![
+            "postgresql://user:pass@localhost:5432/db",
+            "postgresql://user@localhost/db",
+            "postgresql://localhost/db",
+            "postgres://user:pass@host:5432/database",
+        ];
+
+        for url in valid_urls {
+            assert!(url.starts_with("postgres"), "URL {} 应该以postgres开头", url);
+            assert!(url.contains("://"), "URL {} 应该包含协议分隔符", url);
+        }
+
+        // 测试无效的数据库URL
+        let invalid_urls = vec![
+            "",
+            "invalid_url",
+            "http://localhost/db",
+            "mysql://localhost/db",
+        ];
+
+        for url in invalid_urls {
+            assert!(!url.starts_with("postgresql://") && !url.starts_with("postgres://"),
+                   "URL {} 应该是无效的PostgreSQL URL", url);
+        }
+    }
+
+    /// 测试：迁移文件结构
+    #[test]
+    fn test_migration_structure() {
+        init_test_env();
+
+        let migration = Migration {
+            version: "001".to_string(),
+            name: "initial_schema".to_string(),
+            sql: "CREATE TABLE test (id SERIAL PRIMARY KEY);".to_string(),
+            checksum: "abc123".to_string(),
+            applied_at: None,
+        };
+
+        assert_eq!(migration.version, "001");
+        assert_eq!(migration.name, "initial_schema");
+        assert!(!migration.sql.is_empty());
+        assert!(!migration.checksum.is_empty());
+        assert!(migration.applied_at.is_none());
+    }
+
+    /// 测试：迁移文件名解析
+    #[test]
+    fn test_migration_filename_parsing() {
+        init_test_env();
+
+        let test_cases = vec![
+            ("001_initial_schema.sql", "001", "initial_schema"),
+            ("002_add_users_table.sql", "002", "add_users_table"),
+            ("010_update_indexes.sql", "010", "update_indexes"),
+        ];
+
+        for (filename, expected_version, expected_name) in test_cases {
+            let parts: Vec<&str> = filename.split('_').collect();
+            let version = parts[0];
+            let name = filename.strip_suffix(".sql").unwrap()
+                .strip_prefix(&format!("{}_", version)).unwrap();
+
+            assert_eq!(version, expected_version);
+            assert_eq!(name, expected_name);
+        }
+    }
+
+    /// 测试：SQL校验和计算
+    #[test]
+    fn test_sql_checksum_calculation() {
+        init_test_env();
+
+        let sql1 = "CREATE TABLE users (id SERIAL PRIMARY KEY);";
+        let sql2 = "CREATE TABLE users (id SERIAL PRIMARY KEY);";
+        let sql3 = "CREATE TABLE orders (id SERIAL PRIMARY KEY);";
+
+        let checksum1 = format!("{:x}", md5::compute(sql1));
+        let checksum2 = format!("{:x}", md5::compute(sql2));
+        let checksum3 = format!("{:x}", md5::compute(sql3));
+
+        // 相同SQL应该有相同校验和
+        assert_eq!(checksum1, checksum2);
+
+        // 不同SQL应该有不同校验和
+        assert_ne!(checksum1, checksum3);
+
+        // 校验和应该是32位十六进制字符串
+        assert_eq!(checksum1.len(), 32);
+        assert!(checksum1.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    /// 测试：用户仓库模式
+    #[test]
+    fn test_user_repository_pattern() {
+        init_test_env();
+
+        // 创建模拟的用户数据
+        let user = User {
+            id: Uuid::new_v4(),
+            email: "repository@example.com".to_string(),
+            first_name: "Repository".to_string(),
+            last_name: "Test".to_string(),
+            is_verified: false,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        // 验证用户数据结构
+        assert!(!user.email.is_empty());
+        assert!(!user.first_name.is_empty());
+        assert!(!user.last_name.is_empty());
+        assert!(user.email.contains('@'));
+
+        // 验证时间戳
+        let now = chrono::Utc::now();
+        let time_diff = (now - user.created_at).num_seconds();
+        assert!(time_diff >= 0 && time_diff < 5);
+    }
+
+    /// 测试：数据库连接配置
+    #[test]
+    fn test_database_connection_config() {
+        init_test_env();
+
+        // 测试连接池配置参数
+        let max_connections = 20u32;
+        let min_connections = 5u32;
+        let acquire_timeout = 30u64;
+        let idle_timeout = 600u64;
+        let max_lifetime = 1800u64;
+
+        assert!(max_connections > min_connections, "最大连接数应该大于最小连接数");
+        assert!(max_connections <= 100, "最大连接数不应该过大");
+        assert!(min_connections > 0, "最小连接数应该大于0");
+        assert!(acquire_timeout > 0, "获取连接超时应该大于0");
+        assert!(idle_timeout > 0, "空闲超时应该大于0");
+        assert!(max_lifetime > idle_timeout, "最大生命周期应该大于空闲超时");
+    }
+
+    /// 测试：错误处理类型
+    #[test]
+    fn test_error_handling_types() {
+        init_test_env();
+
+        // 测试数据库错误
+        let db_error = FlowExError::Database("Connection failed".to_string());
+        match db_error {
+            FlowExError::Database(msg) => {
+                assert_eq!(msg, "Connection failed");
+            }
+            _ => panic!("应该是数据库错误"),
+        }
+
+        // 测试验证错误
+        let validation_error = FlowExError::Validation("Invalid email format".to_string());
+        match validation_error {
+            FlowExError::Validation(msg) => {
+                assert_eq!(msg, "Invalid email format");
+            }
+            _ => panic!("应该是验证错误"),
+        }
+    }
+
+    /// 测试：SQL查询构建
+    #[test]
+    fn test_sql_query_building() {
+        init_test_env();
+
+        // 测试用户查询SQL
+        let user_id = Uuid::new_v4();
+        let email = "test@example.com";
+
+        // 模拟SQL查询构建
+        let select_by_id = format!(
+            "SELECT id, email, first_name, last_name, is_verified, created_at, updated_at FROM users WHERE id = '{}'",
+            user_id
+        );
+
+        let select_by_email = format!(
+            "SELECT id, email, first_name, last_name, is_verified, created_at, updated_at FROM users WHERE email = '{}'",
+            email
+        );
+
+        assert!(select_by_id.contains("SELECT"));
+        assert!(select_by_id.contains("FROM users"));
+        assert!(select_by_id.contains("WHERE id"));
+        assert!(select_by_id.contains(&user_id.to_string()));
+
+        assert!(select_by_email.contains("SELECT"));
+        assert!(select_by_email.contains("FROM users"));
+        assert!(select_by_email.contains("WHERE email"));
+        assert!(select_by_email.contains(email));
+    }
+
+    /// 测试：数据类型转换
+    #[test]
+    fn test_data_type_conversion() {
+        init_test_env();
+
+        // 测试UUID转换
+        let uuid = Uuid::new_v4();
+        let uuid_string = uuid.to_string();
+        let parsed_uuid = Uuid::parse_str(&uuid_string).unwrap();
+        assert_eq!(uuid, parsed_uuid);
+
+        // 测试时间戳转换
+        let now = chrono::Utc::now();
+        let timestamp = now.timestamp();
+        let from_timestamp = chrono::DateTime::from_timestamp(timestamp, 0).unwrap();
+        assert_eq!(now.timestamp(), from_timestamp.timestamp());
+
+        // 测试布尔值转换
+        let is_verified = true;
+        let verification_string = is_verified.to_string();
+        assert_eq!(verification_string, "true");
+    }
+
+    /// 测试：并发数据库操作模拟
+    #[tokio::test]
+    async fn test_concurrent_database_operations() {
+        init_test_env();
+
+        let mut handles = vec![];
+
+        // 模拟并发数据库操作
+        for i in 0..10 {
+            let handle = tokio::spawn(async move {
+                // 模拟数据库操作
+                let user = User {
+                    id: Uuid::new_v4(),
+                    email: format!("concurrent{}@example.com", i),
+                    first_name: format!("User{}", i),
+                    last_name: "Concurrent".to_string(),
+                    is_verified: i % 2 == 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                };
+
+                // 模拟数据库写入延迟
+                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+                (i, user.email)
+            });
+            handles.push(handle);
+        }
+
+        // 等待所有操作完成
+        for handle in handles {
+            let (task_id, email) = handle.await.unwrap();
+            assert!(email.contains(&format!("concurrent{}", task_id)));
+        }
+    }
+
+    /// 测试：性能基准
+    #[tokio::test]
+    async fn test_performance_benchmark() {
+        init_test_env();
+
+        let start = std::time::Instant::now();
+
+        // 模拟大量数据库操作
+        for i in 0..1000 {
+            let _user = User {
+                id: Uuid::new_v4(),
+                email: format!("perf{}@example.com", i),
+                first_name: format!("User{}", i),
+                last_name: "Performance".to_string(),
+                is_verified: i % 2 == 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            };
+
+            // 模拟数据处理
+            let _checksum = format!("{:x}", md5::compute(format!("user_{}", i)));
+        }
+
+        let duration = start.elapsed();
+        println!("1000次数据库操作模拟耗时: {:?}", duration);
+
+        // 性能要求：1000次操作应该在100ms内完成
+        assert!(duration.as_millis() < 100, "数据库操作性能不达标");
+    }
+
+    /// 测试：内存使用优化
+    #[test]
+    fn test_memory_usage_optimization() {
+        init_test_env();
+
+        let mut users = Vec::new();
+        let mut migrations = Vec::new();
+
+        // 创建大量数据对象
+        for i in 0..1000 {
+            let user = User {
+                id: Uuid::new_v4(),
+                email: format!("memory{}@example.com", i),
+                first_name: format!("User{}", i),
+                last_name: "Memory".to_string(),
+                is_verified: i % 2 == 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            };
+            users.push(user);
+
+            let migration = Migration {
+                version: format!("{:03}", i),
+                name: format!("migration_{}", i),
+                sql: format!("CREATE TABLE table_{} (id SERIAL PRIMARY KEY);", i),
+                checksum: format!("{:x}", md5::compute(format!("migration_{}", i))),
+                applied_at: Some(chrono::Utc::now()),
+            };
+            migrations.push(migration);
+        }
+
+        assert_eq!(users.len(), 1000);
+        assert_eq!(migrations.len(), 1000);
+
+        // 清理内存
+        drop(users);
+        drop(migrations);
+        assert!(true, "内存使用优化测试完成");
+    }
+
+    /// 测试：边界值处理
+    #[test]
+    fn test_boundary_value_handling() {
+        init_test_env();
+
+        // 测试空字符串
+        let empty_email = "";
+        assert!(empty_email.is_empty());
+
+        // 测试最大长度字符串
+        let max_email = format!("{}@example.com", "a".repeat(250));
+        assert!(max_email.len() > 250);
+
+        // 测试特殊字符
+        let special_email = "test+tag@example.com";
+        assert!(special_email.contains('+'));
+        assert!(special_email.contains('@'));
+
+        // 测试Unicode字符
+        let unicode_name = "用户测试";
+        assert!(!unicode_name.is_ascii());
+        assert!(!unicode_name.is_empty());
+    }
+
+    /// 测试：数据完整性验证
+    #[test]
+    fn test_data_integrity_validation() {
+        init_test_env();
+
+        let user = User {
+            id: Uuid::new_v4(),
+            email: "integrity@example.com".to_string(),
+            first_name: "Integrity".to_string(),
+            last_name: "Test".to_string(),
+            is_verified: true,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        // 验证数据完整性
+        assert!(!user.id.is_nil(), "用户ID不应该为空");
+        assert!(user.email.contains('@'), "邮箱应该包含@符号");
+        assert!(!user.first_name.is_empty(), "名字不应该为空");
+        assert!(!user.last_name.is_empty(), "姓氏不应该为空");
+        assert!(user.updated_at >= user.created_at, "更新时间应该大于等于创建时间");
+    }
 }

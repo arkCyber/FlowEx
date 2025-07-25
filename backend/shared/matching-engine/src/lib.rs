@@ -363,3 +363,535 @@ impl MatchingEngine {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+
+    /// 初始化测试环境
+    fn init_test_env() {
+        INIT.call_once(|| {
+            let _ = tracing_subscriber::fmt()
+                .with_test_writer()
+                .with_env_filter("debug")
+                .try_init();
+        });
+    }
+
+    /// 创建测试订单的辅助函数
+    fn create_test_order(
+        side: OrderSide,
+        order_type: OrderType,
+        price: Option<Decimal>,
+        quantity: Decimal,
+    ) -> Order {
+        Order {
+            id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            trading_pair: "BTCUSDT".to_string(),
+            side,
+            order_type,
+            price,
+            quantity,
+            filled_quantity: Decimal::ZERO,
+            remaining_quantity: quantity,
+            status: OrderStatus::New,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    /// 测试：匹配引擎创建
+    #[test]
+    fn test_matching_engine_creation() {
+        init_test_env();
+
+        let engine = MatchingEngine::new("BTCUSDT".to_string());
+        assert_eq!(engine.symbol, "BTCUSDT");
+        assert!(engine.buy_orders.is_empty());
+        assert!(engine.sell_orders.is_empty());
+        assert_eq!(engine.last_trade_price, None);
+        assert_eq!(engine.total_volume, Decimal::ZERO);
+    }
+
+    /// 测试：订单验证 - 正常情况
+    #[test]
+    fn test_order_validation_success() {
+        init_test_env();
+
+        let engine = MatchingEngine::new("BTCUSDT".to_string());
+
+        // 测试限价买单
+        let buy_order = create_test_order(
+            OrderSide::Buy,
+            OrderType::Limit,
+            Some(Decimal::new(50000, 0)),
+            Decimal::new(1, 0),
+        );
+        assert!(engine.validate_order(&buy_order).is_ok());
+
+        // 测试市价卖单
+        let sell_order = create_test_order(
+            OrderSide::Sell,
+            OrderType::Market,
+            None,
+            Decimal::new(1, 0),
+        );
+        assert!(engine.validate_order(&sell_order).is_ok());
+    }
+
+    /// 测试：订单验证 - 错误情况
+    #[test]
+    fn test_order_validation_errors() {
+        init_test_env();
+
+        let engine = MatchingEngine::new("BTCUSDT".to_string());
+
+        // 测试数量为零的订单
+        let zero_quantity_order = create_test_order(
+            OrderSide::Buy,
+            OrderType::Limit,
+            Some(Decimal::new(50000, 0)),
+            Decimal::ZERO,
+        );
+        assert!(engine.validate_order(&zero_quantity_order).is_err());
+
+        // 测试交易对不匹配
+        let mut wrong_symbol_order = create_test_order(
+            OrderSide::Buy,
+            OrderType::Limit,
+            Some(Decimal::new(50000, 0)),
+            Decimal::new(1, 0),
+        );
+        wrong_symbol_order.trading_pair = "ETHUSDT".to_string();
+        assert!(engine.validate_order(&wrong_symbol_order).is_err());
+
+        // 测试限价单没有价格
+        let no_price_order = create_test_order(
+            OrderSide::Buy,
+            OrderType::Limit,
+            None,
+            Decimal::new(1, 0),
+        );
+        assert!(engine.validate_order(&no_price_order).is_err());
+
+        // 测试限价单价格为零
+        let zero_price_order = create_test_order(
+            OrderSide::Buy,
+            OrderType::Limit,
+            Some(Decimal::ZERO),
+            Decimal::new(1, 0),
+        );
+        assert!(engine.validate_order(&zero_price_order).is_err());
+    }
+
+    /// 测试：限价单匹配 - 完全成交
+    #[test]
+    fn test_limit_order_full_match() {
+        init_test_env();
+
+        let mut engine = MatchingEngine::new("BTCUSDT".to_string());
+
+        // 添加卖单到订单簿
+        let sell_order = create_test_order(
+            OrderSide::Sell,
+            OrderType::Limit,
+            Some(Decimal::new(50000, 0)),
+            Decimal::new(1, 0),
+        );
+        let trades = engine.add_order(sell_order).unwrap();
+        assert!(trades.is_empty()); // 没有匹配，应该加入订单簿
+
+        // 添加匹配的买单
+        let buy_order = create_test_order(
+            OrderSide::Buy,
+            OrderType::Limit,
+            Some(Decimal::new(50000, 0)),
+            Decimal::new(1, 0),
+        );
+        let trades = engine.add_order(buy_order).unwrap();
+
+        // 验证交易生成
+        assert_eq!(trades.len(), 1);
+        let trade = &trades[0];
+        assert_eq!(trade.symbol, "BTCUSDT");
+        assert_eq!(trade.price, Decimal::new(50000, 0));
+        assert_eq!(trade.quantity, Decimal::new(1, 0));
+        assert_eq!(trade.side, OrderSide::Buy);
+
+        // 验证订单簿为空（订单完全成交）
+        let order_book = engine.get_order_book(10);
+        assert!(order_book.bids.is_empty());
+        assert!(order_book.asks.is_empty());
+    }
+
+    /// 测试：限价单匹配 - 部分成交
+    #[test]
+    fn test_limit_order_partial_match() {
+        init_test_env();
+
+        let mut engine = MatchingEngine::new("BTCUSDT".to_string());
+
+        // 添加大额卖单
+        let sell_order = create_test_order(
+            OrderSide::Sell,
+            OrderType::Limit,
+            Some(Decimal::new(50000, 0)),
+            Decimal::new(2, 0),
+        );
+        engine.add_order(sell_order).unwrap();
+
+        // 添加小额买单
+        let buy_order = create_test_order(
+            OrderSide::Buy,
+            OrderType::Limit,
+            Some(Decimal::new(50000, 0)),
+            Decimal::new(1, 0),
+        );
+        let trades = engine.add_order(buy_order).unwrap();
+
+        // 验证交易生成
+        assert_eq!(trades.len(), 1);
+        assert_eq!(trades[0].quantity, Decimal::new(1, 0));
+
+        // 验证订单簿中还有剩余卖单
+        let order_book = engine.get_order_book(10);
+        assert!(order_book.bids.is_empty());
+        assert_eq!(order_book.asks.len(), 1);
+        assert_eq!(order_book.asks[0].quantity, Decimal::new(1, 0));
+    }
+
+    /// 测试：市价单匹配
+    #[test]
+    fn test_market_order_execution() {
+        init_test_env();
+
+        let mut engine = MatchingEngine::new("BTCUSDT".to_string());
+
+        // 添加多个限价卖单
+        let sell_order1 = create_test_order(
+            OrderSide::Sell,
+            OrderType::Limit,
+            Some(Decimal::new(50000, 0)),
+            Decimal::new(1, 0),
+        );
+        engine.add_order(sell_order1).unwrap();
+
+        let sell_order2 = create_test_order(
+            OrderSide::Sell,
+            OrderType::Limit,
+            Some(Decimal::new(50100, 0)),
+            Decimal::new(1, 0),
+        );
+        engine.add_order(sell_order2).unwrap();
+
+        // 添加市价买单
+        let market_buy_order = create_test_order(
+            OrderSide::Buy,
+            OrderType::Market,
+            None,
+            Decimal::new(15, 1), // 1.5
+        );
+        let trades = engine.add_order(market_buy_order).unwrap();
+
+        // 验证交易执行
+        assert_eq!(trades.len(), 2);
+        assert_eq!(trades[0].price, Decimal::new(50000, 0));
+        assert_eq!(trades[0].quantity, Decimal::new(1, 0));
+        assert_eq!(trades[1].price, Decimal::new(50100, 0));
+        assert_eq!(trades[1].quantity, Decimal::new(5, 1)); // 0.5
+    }
+
+    /// 测试：订单簿深度获取
+    #[test]
+    fn test_order_book_depth() {
+        init_test_env();
+
+        let mut engine = MatchingEngine::new("BTCUSDT".to_string());
+
+        // 添加多个买单和卖单
+        for i in 1..=5 {
+            let buy_price = Decimal::new(50000 - i * 100, 0);
+            let sell_price = Decimal::new(50000 + i * 100, 0);
+
+            let buy_order = create_test_order(
+                OrderSide::Buy,
+                OrderType::Limit,
+                Some(buy_price),
+                Decimal::new(1, 0),
+            );
+            engine.add_order(buy_order).unwrap();
+
+            let sell_order = create_test_order(
+                OrderSide::Sell,
+                OrderType::Limit,
+                Some(sell_price),
+                Decimal::new(1, 0),
+            );
+            engine.add_order(sell_order).unwrap();
+        }
+
+        // 获取订单簿深度
+        let order_book = engine.get_order_book(3);
+
+        // 验证买单按价格降序排列
+        assert_eq!(order_book.bids.len(), 3);
+        assert!(order_book.bids[0].price > order_book.bids[1].price);
+        assert!(order_book.bids[1].price > order_book.bids[2].price);
+
+        // 验证卖单按价格升序排列
+        assert_eq!(order_book.asks.len(), 3);
+        assert!(order_book.asks[0].price < order_book.asks[1].price);
+        assert!(order_book.asks[1].price < order_book.asks[2].price);
+    }
+
+    /// 测试：最佳买卖价获取
+    #[test]
+    fn test_best_bid_ask() {
+        init_test_env();
+
+        let mut engine = MatchingEngine::new("BTCUSDT".to_string());
+
+        // 初始状态应该没有最佳价格
+        assert_eq!(engine.get_best_bid(), None);
+        assert_eq!(engine.get_best_ask(), None);
+        assert_eq!(engine.get_spread(), None);
+
+        // 添加买单和卖单
+        let buy_order = create_test_order(
+            OrderSide::Buy,
+            OrderType::Limit,
+            Some(Decimal::new(49900, 0)),
+            Decimal::new(1, 0),
+        );
+        engine.add_order(buy_order).unwrap();
+
+        let sell_order = create_test_order(
+            OrderSide::Sell,
+            OrderType::Limit,
+            Some(Decimal::new(50100, 0)),
+            Decimal::new(1, 0),
+        );
+        engine.add_order(sell_order).unwrap();
+
+        // 验证最佳价格
+        assert_eq!(engine.get_best_bid(), Some(Decimal::new(49900, 0)));
+        assert_eq!(engine.get_best_ask(), Some(Decimal::new(50100, 0)));
+        assert_eq!(engine.get_spread(), Some(Decimal::new(200, 0)));
+    }
+
+    /// 测试：订单取消
+    #[test]
+    fn test_order_cancellation() {
+        init_test_env();
+
+        let mut engine = MatchingEngine::new("BTCUSDT".to_string());
+
+        // 添加订单
+        let order = create_test_order(
+            OrderSide::Buy,
+            OrderType::Limit,
+            Some(Decimal::new(50000, 0)),
+            Decimal::new(1, 0),
+        );
+        let order_id = order.id;
+        engine.add_order(order).unwrap();
+
+        // 验证订单在订单簿中
+        let order_book = engine.get_order_book(10);
+        assert_eq!(order_book.bids.len(), 1);
+
+        // 取消订单
+        let cancelled = engine.cancel_order(order_id).unwrap();
+        assert!(cancelled);
+
+        // 验证订单已从订单簿中移除
+        let order_book = engine.get_order_book(10);
+        assert!(order_book.bids.is_empty());
+
+        // 尝试取消不存在的订单
+        let not_cancelled = engine.cancel_order(Uuid::new_v4()).unwrap();
+        assert!(!not_cancelled);
+    }
+
+    /// 测试：价格时间优先原则
+    #[test]
+    fn test_price_time_priority() {
+        init_test_env();
+
+        let mut engine = MatchingEngine::new("BTCUSDT".to_string());
+
+        // 添加相同价格的多个卖单（时间优先）
+        let sell_order1 = create_test_order(
+            OrderSide::Sell,
+            OrderType::Limit,
+            Some(Decimal::new(50000, 0)),
+            Decimal::new(1, 0),
+        );
+        let order1_id = sell_order1.id;
+        engine.add_order(sell_order1).unwrap();
+
+        // 稍等一下确保时间不同
+        std::thread::sleep(std::time::Duration::from_millis(1));
+
+        let sell_order2 = create_test_order(
+            OrderSide::Sell,
+            OrderType::Limit,
+            Some(Decimal::new(50000, 0)),
+            Decimal::new(1, 0),
+        );
+        engine.add_order(sell_order2).unwrap();
+
+        // 添加买单，应该匹配第一个卖单
+        let buy_order = create_test_order(
+            OrderSide::Buy,
+            OrderType::Limit,
+            Some(Decimal::new(50000, 0)),
+            Decimal::new(1, 0),
+        );
+        let trades = engine.add_order(buy_order).unwrap();
+
+        // 验证交易生成且匹配了第一个订单
+        assert_eq!(trades.len(), 1);
+
+        // 验证第二个订单仍在订单簿中
+        let order_book = engine.get_order_book(10);
+        assert_eq!(order_book.asks.len(), 1);
+    }
+
+    /// 测试：性能基准
+    #[test]
+    fn test_performance_benchmark() {
+        init_test_env();
+
+        let mut engine = MatchingEngine::new("BTCUSDT".to_string());
+        let start = std::time::Instant::now();
+
+        // 添加1000个订单
+        for i in 0..1000 {
+            let price = Decimal::new(50000 + (i % 100), 0);
+            let order = create_test_order(
+                if i % 2 == 0 { OrderSide::Buy } else { OrderSide::Sell },
+                OrderType::Limit,
+                Some(price),
+                Decimal::new(1, 0),
+            );
+            engine.add_order(order).unwrap();
+        }
+
+        let duration = start.elapsed();
+        println!("添加1000个订单耗时: {:?}", duration);
+
+        // 性能要求：1000个订单应该在100ms内完成
+        assert!(duration.as_millis() < 100, "订单处理性能不达标");
+    }
+
+    /// 测试：并发安全性（模拟）
+    #[test]
+    fn test_concurrent_operations() {
+        init_test_env();
+
+        let mut engine = MatchingEngine::new("BTCUSDT".to_string());
+
+        // 模拟并发添加订单
+        let mut handles = vec![];
+
+        for i in 0..10 {
+            let order = create_test_order(
+                OrderSide::Buy,
+                OrderType::Limit,
+                Some(Decimal::new(50000 + i, 0)),
+                Decimal::new(1, 0),
+            );
+
+            // 在实际并发环境中，这里会使用Arc<Mutex<MatchingEngine>>
+            let trades = engine.add_order(order).unwrap();
+            assert!(trades.is_empty()); // 这些订单不应该匹配
+        }
+
+        // 验证所有订单都被正确添加
+        let order_book = engine.get_order_book(20);
+        assert_eq!(order_book.bids.len(), 10);
+    }
+
+    /// 测试：边界条件
+    #[test]
+    fn test_edge_cases() {
+        init_test_env();
+
+        let mut engine = MatchingEngine::new("BTCUSDT".to_string());
+
+        // 测试极小数量
+        let tiny_order = create_test_order(
+            OrderSide::Buy,
+            OrderType::Limit,
+            Some(Decimal::new(50000, 0)),
+            Decimal::new(1, 8), // 0.00000001
+        );
+        let trades = engine.add_order(tiny_order).unwrap();
+        assert!(trades.is_empty());
+
+        // 测试极大数量
+        let large_order = create_test_order(
+            OrderSide::Sell,
+            OrderType::Limit,
+            Some(Decimal::new(50000, 0)),
+            Decimal::new(1000000, 0),
+        );
+        let trades = engine.add_order(large_order).unwrap();
+        assert!(trades.is_empty());
+
+        // 测试极高价格
+        let high_price_order = create_test_order(
+            OrderSide::Buy,
+            OrderType::Limit,
+            Some(Decimal::new(999999999, 0)),
+            Decimal::new(1, 0),
+        );
+        let trades = engine.add_order(high_price_order).unwrap();
+        assert!(trades.is_empty());
+    }
+
+    /// 测试：错误恢复
+    #[test]
+    fn test_error_recovery() {
+        init_test_env();
+
+        let mut engine = MatchingEngine::new("BTCUSDT".to_string());
+
+        // 添加正常订单
+        let normal_order = create_test_order(
+            OrderSide::Buy,
+            OrderType::Limit,
+            Some(Decimal::new(50000, 0)),
+            Decimal::new(1, 0),
+        );
+        engine.add_order(normal_order).unwrap();
+
+        // 尝试添加无效订单
+        let invalid_order = create_test_order(
+            OrderSide::Buy,
+            OrderType::Limit,
+            Some(Decimal::ZERO),
+            Decimal::new(1, 0),
+        );
+        assert!(engine.add_order(invalid_order).is_err());
+
+        // 验证引擎状态未被破坏
+        let order_book = engine.get_order_book(10);
+        assert_eq!(order_book.bids.len(), 1);
+
+        // 继续添加正常订单应该成功
+        let another_order = create_test_order(
+            OrderSide::Sell,
+            OrderType::Limit,
+            Some(Decimal::new(51000, 0)),
+            Decimal::new(1, 0),
+        );
+        let trades = engine.add_order(another_order).unwrap();
+        assert!(trades.is_empty());
+    }
+}
